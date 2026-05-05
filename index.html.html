@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام إدارة المخزون</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 24px; direction: rtl; }
+    h1 { font-size: 22px; font-weight: 600; color: #1a1a1a; }
+    .save-indicator { font-size: 12px; color: #666; display: flex; align-items: center; gap: 5px; margin-top: 4px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #639922; display: inline-block; }
+    .dot.saving { background: #BA7517; animation: pulse 0.8s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .top-bar { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 1.2rem; flex-wrap: wrap; gap: 12px; }
+    .search-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .search-row input { height: 36px; border: 1px solid #d0d0d0; border-radius: 8px; padding: 0 12px; font-size: 14px; background: #fff; color: #1a1a1a; width: 180px; }
+    .btn { height: 36px; padding: 0 16px; font-size: 14px; border-radius: 8px; background: #fff; border: 1px solid #d0d0d0; color: #1a1a1a; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .btn:hover { background: #f0f0f0; }
+    .btn-excel { border-color: #3B6D11; color: #3B6D11; background: #EAF3DE; }
+    .btn-excel:hover { background: #C0DD97; }
+    .btn-reset { border-color: #A32D2D; color: #A32D2D; }
+    .btn-reset:hover { background: #FCEBEB; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1.2rem; }
+    .stat-card { background: #fff; border-radius: 10px; padding: 1rem 1.1rem; border: 1px solid #e8e8e8; }
+    .stat-card .label { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .stat-card .val { font-size: 24px; font-weight: 600; color: #1a1a1a; }
+    .low-stock .val { color: #BA7517; }
+
+    .tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 1rem; }
+    .tab { padding: 9px 20px; font-size: 14px; cursor: pointer; color: #666; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; font-weight: 500; }
+
+    .table-wrap { border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; background: #fff; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { background: #f7f7f7; padding: 10px 12px; font-size: 13px; font-weight: 500; color: #555; text-align: right; border-bottom: 1px solid #e0e0e0; }
+    td { padding: 10px 12px; font-size: 14px; color: #1a1a1a; border-bottom: 1px solid #f0f0f0; text-align: right; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+
+    .img-cell { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1px solid #e0e0e0; }
+    .img-ph { width: 44px; height: 44px; border-radius: 8px; border: 1px solid #e0e0e0; background: #f5f5f5; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; }
+    .badge-ok { background: #EAF3DE; color: #3B6D11; }
+    .badge-low { background: #FAEEDA; color: #854F0B; }
+    .badge-out { background: #FCEBEB; color: #A32D2D; }
+
+    .log-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; }
+    .log-add { background: #E8EEF7; color: #2C4F8A; }
+    .log-edit { background: #FAEEDA; color: #854F0B; }
+    .log-del { background: #FCEBEB; color: #A32D2D; }
+
+    .actions { display: flex; gap: 5px; justify-content: flex-end; }
+    .btn-sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px; background: #fff; border: 1px solid #d0d0d0; color: #1a1a1a; cursor: pointer; }
+    .btn-sm:hover { background: #f0f0f0; }
+    .btn-del { border-color: #F0997B; color: #993C1D; }
+    .btn-del:hover { background: #FAECE7; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 100; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #fff; border-radius: 12px; border: 1px solid #e0e0e0; padding: 1.5rem; width: 370px; max-width: 95vw; }
+    .modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 1.2rem; }
+    .form-group { margin-bottom: 0.9rem; }
+    .form-group label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+    .form-group input { width: 100%; height: 36px; border: 1px solid #d0d0d0; border-radius: 8px; padding: 0 10px; font-size: 14px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1.2rem; }
+    .btn-primary { height: 36px; padding: 0 20px; font-size: 14px; border-radius: 8px; background: #1a1a1a; border: none; color: #fff; cursor: pointer; }
+    .btn-primary:hover { background: #333; }
+    .btn-cancel { height: 36px; padding: 0 14px; font-size: 14px; border-radius: 8px; background: #fff; border: 1px solid #d0d0d0; color: #1a1a1a; cursor: pointer; }
+    .btn-cancel:hover { background: #f0f0f0; }
+    .img-preview { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #d0d0d0; margin-top: 6px; display: none; }
+
+    .empty { text-align: center; padding: 2.5rem; color: #888; font-size: 14px; }
+    .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.7rem; }
+    .log-clear-btn { font-size: 12px; color: #A32D2D; cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #3B6D11; color: #EAF3DE; padding: 10px 20px; border-radius: 8px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+    .toast.show { opacity: 1; }
+
+    @media (max-width: 600px) {
+      body { padding: 12px; }
+      .top-bar { flex-direction: column; }
+      th:nth-child(1), td:nth-child(1) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="top-bar">
+  <div>
+    <h1>مخزون المنتجات</h1>
+    <div class="save-indicator">
+      <span class="dot" id="saveDot"></span>
+      <span id="saveText">جارٍ التحميل...</span>
+    </div>
+  </div>
+  <div class="search-row">
+    <input type="text" id="searchInput" placeholder="بحث عن منتج..." oninput="renderTable()">
+    <button class="btn btn-excel" onclick="exportExcel()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      تصدير Excel
+    </button>
+    <button class="btn" onclick="openModal()">+ إضافة منتج</button>
+    <button class="btn btn-reset" onclick="confirmReset()">إعادة تعيين</button>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat-card"><div class="label">إجمالي المنتجات</div><div class="val" id="statTotal">0</div></div>
+  <div class="stat-card"><div class="label">القيمة الكلية (ر.س)</div><div class="val" id="statValue">0</div></div>
+  <div class="stat-card low-stock"><div class="label">مخزون منخفض</div><div class="val" id="statLow">0</div></div>
+  <div class="stat-card"><div class="label">نفد المخزون</div><div class="val" id="statOut">0</div></div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" id="tab-products" onclick="switchTab('products')">المنتجات</div>
+  <div class="tab" id="tab-log" onclick="switchTab('log')">
+    سجل الحركات
+    <span id="logBadge" style="background:#f0f0f0;border-radius:10px;padding:1px 7px;font-size:11px;margin-right:4px"></span>
+  </div>
+</div>
+
+<!-- Products View -->
+<div id="view-products">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:56px">صورة</th>
+          <th>اسم المنتج</th>
+          <th style="width:90px">السعر (ر.س)</th>
+          <th style="width:80px">الكمية</th>
+          <th style="width:110px">الإجمالي (ر.س)</th>
+          <th style="width:80px">الحالة</th>
+          <th style="width:100px">إجراءات</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Log View -->
+<div id="view-log" style="display:none">
+  <div class="log-header">
+    <span style="font-size:13px;color:#666">آخر العمليات المُنفّذة على المخزون</span>
+    <button class="log-clear-btn" onclick="clearLog()">مسح السجل</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:80px">النوع</th>
+          <th style="width:160px">المنتج</th>
+          <th>التفاصيل</th>
+          <th style="width:130px">التاريخ والوقت</th>
+        </tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">إضافة منتج جديد</h3>
+    <div class="form-group">
+      <label>اسم المنتج</label>
+      <input type="text" id="fName" placeholder="مثال: قميص أبيض">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>السعر (ر.س)</label>
+        <input type="number" id="fPrice" placeholder="0.00" min="0" step="0.01">
+      </div>
+      <div class="form-group">
+        <label>الكمية</label>
+        <input type="number" id="fQty" placeholder="0" min="0" step="1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>صورة المنتج (رابط URL)</label>
+      <input type="text" id="fImg" placeholder="https://..." oninput="previewImg()">
+      <img id="imgPreview" class="img-preview" alt="معاينة الصورة">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal()">إلغاء</button>
+      <button class="btn-primary" onclick="saveProduct()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// =============================================
+//  إعدادات التخزين
+// =============================================
+const STORAGE_KEY = "inventory_v2";
+
+const DEFAULT_PRODUCTS = [
+  { id: 1, name: "قميص أبيض كلاسيكي", price: 89,  qty: 45, img: "" },
+  { id: 2, name: "بنطال جينز أزرق",   price: 149, qty: 18, img: "" },
+  { id: 3, name: "حذاء رياضي",         price: 220, qty: 3,  img: "" },
+  { id: 4, name: "كاب صيفي",           price: 55,  qty: 0,  img: "" },
+  { id: 5, name: "جاكيت شتوي",         price: 380, qty: 12, img: "" },
+];
+
+// =============================================
+//  المتغيرات العامة
+// =============================================
+let products   = [];
+let log        = [];
+let nextId     = 6;
+let editingId  = null;
+let saveTimeout = null;
+
+// =============================================
+//  التخزين المحلي (localStorage)
+// =============================================
+function loadData() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const d = JSON.parse(saved);
+      products = d.products || DEFAULT_PRODUCTS;
+      log      = d.log      || [];
+      nextId   = d.nextId   || (Math.max(...products.map(p => p.id)) + 1);
+      setSave("محفوظ", false, d.savedAt);
+    } else {
+      products = DEFAULT_PRODUCTS;
+      log      = [];
+      nextId   = 6;
+      setSave("لم يتم الحفظ بعد", false, null);
+    }
+  } catch (e) {
+    products = DEFAULT_PRODUCTS;
+    log      = [];
+    nextId   = 6;
+  }
+  renderTable();
+  renderLog();
+}
+
+function saveData() {
+  setSave("جارٍ الحفظ...", true, null);
+  try {
+    const t = now();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ products, log, nextId, savedAt: t }));
+    setSave("محفوظ", false, t);
+  } catch (e) {
+    setSave("فشل الحفظ ✗", false, null);
+  }
+}
+
+function scheduleSave() {
+  document.getElementById("saveDot").classList.add("saving");
+  document.getElementById("saveText").textContent = "جارٍ الحفظ...";
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(saveData, 800);
+}
+
+function setSave(text, saving, savedAt) {
+  const dot = document.getElementById("saveDot");
+  const st  = document.getElementById("saveText");
+  dot.classList.toggle("saving", saving);
+  dot.style.background = saving ? "#BA7517" : (text === "محفوظ" ? "#639922" : "#A32D2D");
+  st.textContent = savedAt ? `محفوظ — ${savedAt}` : text;
+}
+
+// =============================================
+//  أدوات مساعدة
+// =============================================
+function now() {
+  return new Date().toLocaleString("ar-SA", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit"
+  });
+}
+
+function getStatus(qty) {
+  if (qty === 0) return { label: "نفد",     cls: "badge-out" };
+  if (qty <= 5)  return { label: "منخفض",   cls: "badge-low" };
+  return               { label: "متوفر",   cls: "badge-ok"  };
+}
+
+function showToast(msg, color) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.background = color || "#3B6D11";
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+// =============================================
+//  سجل الحركات
+// =============================================
+function addLog(type, productName, details) {
+  log.unshift({ type, productName, details, time: now() });
+  if (log.length > 100) log = log.slice(0, 100);
+  renderLog();
+}
+
+function renderLog() {
+  const body = document.getElementById("logBody");
+  document.getElementById("logBadge").textContent = log.length || "";
+
+  if (!log.length) {
+    body.innerHTML = '<tr><td colspan="4"><div class="empty">لا توجد حركات مسجّلة بعد</div></td></tr>';
+    return;
+  }
+
+  const typeMap = {
+    add:  { label: "إضافة", cls: "log-add"  },
+    edit: { label: "تعديل", cls: "log-edit" },
+    del:  { label: "حذف",   cls: "log-del"  },
+  };
+
+  body.innerHTML = log.map(entry => {
+    const t = typeMap[entry.type] || { label: entry.type, cls: "log-add" };
+    return `<tr>
+      <td><span class="log-badge ${t.cls}">${t.label}</span></td>
+      <td style="font-weight:500">${entry.productName}</td>
+      <td style="color:#666;font-size:12px">${entry.details}</td>
+      <td style="font-size:11px;color:#888">${entry.time}</td>
+    </tr>`;
+  }).join("");
+}
+
+function clearLog() {
+  if (!confirm("هل تريد مسح سجل الحركات كاملاً؟")) return;
+  log = [];
+  renderLog();
+  scheduleSave();
+  showToast("تم مسح السجل", "#993C1D");
+}
+
+// =============================================
+//  جدول المنتجات
+// =============================================
+function renderTable() {
+  const q        = document.getElementById("searchInput").value.trim().toLowerCase();
+  const filtered = products.filter(p => p.name.toLowerCase().includes(q));
+  const body     = document.getElementById("tableBody");
+
+  if (!filtered.length) {
+    body.innerHTML = '<tr><td colspan="7"><div class="empty">لا توجد منتجات</div></td></tr>';
+  } else {
+    body.innerHTML = filtered.map(p => {
+      const total  = (p.price * p.qty).toLocaleString("ar-SA", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+      const priceF = p.price.toLocaleString("ar-SA", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+      const st     = getStatus(p.qty);
+      const imgCell = p.img
+        ? `<img src="${p.img}" class="img-cell" alt="${p.name}" onerror="this.style.display='none'">`
+        : `<div class="img-ph">📦</div>`;
+      return `<tr>
+        <td>${imgCell}</td>
+        <td style="font-weight:500">${p.name}</td>
+        <td>${priceF}</td>
+        <td>${p.qty}</td>
+        <td style="font-weight:500">${total}</td>
+        <td><span class="badge ${st.cls}">${st.label}</span></td>
+        <td>
+          <div class="actions">
+            <button class="btn-sm" onclick="editProduct(${p.id})">تعديل</button>
+            <button class="btn-sm btn-del" onclick="deleteProduct(${p.id})">حذف</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join("");
+  }
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById("statTotal").textContent = products.length;
+  document.getElementById("statValue").textContent = products
+    .reduce((s, p) => s + p.price * p.qty, 0)
+    .toLocaleString("ar-SA", { maximumFractionDigits: 0 });
+  document.getElementById("statLow").textContent = products.filter(p => p.qty > 0 && p.qty <= 5).length;
+  document.getElementById("statOut").textContent = products.filter(p => p.qty === 0).length;
+}
+
+// =============================================
+//  التبويبات
+// =============================================
+function switchTab(tab) {
+  document.getElementById("view-products").style.display = tab === "products" ? "block" : "none";
+  document.getElementById("view-log").style.display      = tab === "log"      ? "block" : "none";
+  document.getElementById("tab-products").classList.toggle("active", tab === "products");
+  document.getElementById("tab-log").classList.toggle("active",      tab === "log");
+}
+
+// =============================================
+//  نافذة الإضافة / التعديل
+// =============================================
+function openModal(id = null) {
+  editingId = id;
+  if (id) {
+    const p = products.find(x => x.id === id);
+    document.getElementById("modalTitle").textContent = "تعديل المنتج";
+    document.getElementById("fName").value  = p.name;
+    document.getElementById("fPrice").value = p.price;
+    document.getElementById("fQty").value   = p.qty;
+    document.getElementById("fImg").value   = p.img || "";
+    const prev = document.getElementById("imgPreview");
+    if (p.img) { prev.src = p.img; prev.style.display = "block"; }
+    else        { prev.style.display = "none"; }
+  } else {
+    document.getElementById("modalTitle").textContent = "إضافة منتج جديد";
+    ["fName", "fPrice", "fQty", "fImg"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("imgPreview").style.display = "none";
+  }
+  document.getElementById("modalOverlay").classList.add("open");
+}
+
+function closeModal() {
+  document.getElementById("modalOverlay").classList.remove("open");
+  editingId = null;
+}
+
+function previewImg() {
+  const url  = document.getElementById("fImg").value.trim();
+  const prev = document.getElementById("imgPreview");
+  if (url) { prev.src = url; prev.style.display = "block"; }
+  else      { prev.style.display = "none"; }
+}
+
+function saveProduct() {
+  const name  = document.getElementById("fName").value.trim();
+  const price = parseFloat(document.getElementById("fPrice").value) || 0;
+  const qty   = parseInt(document.getElementById("fQty").value)     || 0;
+  const img   = document.getElementById("fImg").value.trim();
+
+  if (!name) { document.getElementById("fName").focus(); return; }
+
+  if (editingId) {
+    const p = products.find(x => x.id === editingId);
+    const changes = [];
+    if (p.name  !== name)  changes.push(`الاسم: "${p.name}" ← "${name}"`);
+    if (p.price !== price) changes.push(`السعر: ${p.price} ← ${price} ر.س`);
+    if (p.qty   !== qty)   changes.push(`الكمية: ${p.qty} ← ${qty}`);
+    p.name = name; p.price = price; p.qty = qty; p.img = img;
+    addLog("edit", name, changes.length ? changes.join(" | ") : "تم التعديل");
+    showToast("تم تعديل المنتج ✓");
+  } else {
+    products.push({ id: nextId++, name, price, qty, img });
+    addLog("add", name, `السعر: ${price} ر.س | الكمية: ${qty}`);
+    showToast("تم إضافة المنتج ✓");
+  }
+
+  closeModal();
+  renderTable();
+  scheduleSave();
+}
+
+function editProduct(id)   { openModal(id); }
+
+function deleteProduct(id) {
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  addLog("del", p.name, `السعر: ${p.price} ر.س | الكمية: ${p.qty}`);
+  products = products.filter(x => x.id !== id);
+  renderTable();
+  scheduleSave();
+  showToast("تم حذف المنتج", "#993C1D");
+}
+
+function confirmReset() {
+  if (!confirm("هل أنت متأكد من مسح جميع البيانات؟ لا يمكن التراجع عن هذا الإجراء.")) return;
+  products = [];
+  nextId   = 1;
+  renderTable();
+  scheduleSave();
+  showToast("تم مسح جميع البيانات", "#993C1D");
+}
+
+// =============================================
+//  تصدير Excel (ورقتان: المخزون + السجل)
+// =============================================
+function exportExcel() {
+  const date = new Date().toLocaleDateString("ar-SA");
+
+  // ورقة المخزون
+  const rows = [["اسم المنتج", "السعر (ر.س)", "الكمية", "الإجمالي (ر.س)", "الحالة", "رابط الصورة"]];
+  products.forEach(p => {
+    rows.push([p.name, p.price, p.qty, parseFloat((p.price * p.qty).toFixed(2)), getStatus(p.qty).label, p.img || ""]);
+  });
+  rows.push([]);
+  rows.push(["الإجمالي الكلي", "", "", parseFloat(products.reduce((s, p) => s + p.price * p.qty, 0).toFixed(2)), "", ""]);
+
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  ws1["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 40 }];
+
+  // ورقة سجل الحركات
+  const logRows = [["النوع", "المنتج", "التفاصيل", "التاريخ والوقت"]];
+  log.forEach(e => logRows.push([
+    { add: "إضافة", edit: "تعديل", del: "حذف" }[e.type] || e.type,
+    e.productName, e.details, e.time
+  ]));
+  const ws2 = XLSX.utils.aoa_to_sheet(logRows);
+  ws2["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 38 }, { wch: 22 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, "المخزون");
+  XLSX.utils.book_append_sheet(wb, ws2, "سجل الحركات");
+  XLSX.writeFile(wb, `مخزون_المنتجات_${date.replace(/\//g, "-")}.xlsx`);
+  showToast("تم تصدير الملف بنجاح ✓");
+}
+
+// =============================================
+//  أحداث عامة
+// =============================================
+document.getElementById("modalOverlay").addEventListener("click", function (e) {
+  if (e.target === this) closeModal();
+});
+
+// تحميل البيانات عند فتح الصفحة
+loadData();
+</script>
+</body>
+</html>
